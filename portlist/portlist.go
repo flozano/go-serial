@@ -10,6 +10,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 
@@ -17,7 +18,15 @@ import (
 )
 
 func main() {
-	ports, err := enumerator.GetDetailedPortsList()
+	probe := flag.Bool("probe", false, "actively probe USB devices to retrieve manufacturer, product and configuration strings")
+	flag.Parse()
+
+	var filters []func(vid, pid string) bool
+	if *probe {
+		filters = append(filters, enumerator.All)
+	}
+
+	ports, err := enumerator.GetDetailedPortsList(filters...)
 	if err != nil {
 		log.Fatal(err)
 	}

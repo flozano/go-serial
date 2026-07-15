@@ -17,8 +17,12 @@ import (
 	"go.bug.st/serial"
 )
 
-func nativeGetDetailedPortsList() ([]*PortDetails, error) {
-	// Retrieve the port list
+func nativeGetDetailedPortsList(_ func(vid, pid string) bool) ([]*PortDetails, error) {
+	// Retrieve the port list.
+	// Note: on Linux all the USB details (including Configuration, Manufacturer
+	// and Product) are read from sysfs, which is populated by the kernel at
+	// enumeration time and does not require actively probing the device, so
+	// the active-probe filter is not needed on this platform.
 	ports, err := serial.GetPortsList()
 	if err != nil {
 		return nil, &PortEnumerationError{causedBy: err}

@@ -117,7 +117,7 @@ func (dev *deviceInfo) openDevRegKey(scope windows.DICS_FLAG, hwProfile uint32, 
 	return setupDiOpenDevRegKey(dev.set, dev.data, scope, hwProfile, keyType, samDesired)
 }
 
-func nativeGetDetailedPortsList() ([]*PortDetails, error) {
+func nativeGetDetailedPortsList(shouldProbeUSB func(vid, pid string) bool) ([]*PortDetails, error) {
 	guids, err := windows.SetupDiClassGuidsFromNameEx("Ports", "")
 	if err != nil {
 		return nil, &PortEnumerationError{causedBy: err}
@@ -147,7 +147,7 @@ func nativeGetDetailedPortsList() ([]*PortDetails, error) {
 			}
 			details.Name = portName
 
-			if err := retrievePortDetailsFromDevInfo(device, details); err != nil {
+			if err := retrievePortDetailsFromDevInfo(device, details, shouldProbeUSB); err != nil {
 				return nil, &PortEnumerationError{causedBy: err}
 			}
 			res = append(res, details)
@@ -172,7 +172,7 @@ func retrievePortNameFromDevInfo(device *deviceInfo) (string, error) {
 	return syscall.UTF16ToString(name[:]), nil
 }
 
-func retrievePortDetailsFromDevInfo(device *deviceInfo, details *PortDetails) error {
+func retrievePortDetailsFromDevInfo(device *deviceInfo, details *PortDetails, shouldProbeUSB func(vid, pid string) bool) error {
 	deviceID, err := device.getInstanceID()
 	if err != nil {
 		return err
@@ -206,7 +206,11 @@ func retrievePortDetailsFromDevInfo(device *deviceInfo, details *PortDetails) er
 		}
 	}
 
-	if details.IsUSB {
+	// Retrieving iManufacturer/iProduct/iConfiguration strings requires actively
+	// probing the USB device via the parent hub, which may interfere with the
+	// device's normal operation. Only do this if the caller explicitly allowed
+	// probing for this VID/PID.
+	if details.IsUSB && shouldProbeUSB(details.VID, details.PID) {
 		if hub, port, err := findUsbHubAndPortConnectedToDevice(device); err == nil {
 			defer hub.Close()
 

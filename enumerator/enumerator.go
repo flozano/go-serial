@@ -22,18 +22,38 @@ type PortDetails struct {
 	// SerialNumber is the USB serial number, when available.
 	SerialNumber string
 	// Configuration is the USB configuration string, when available.
+	// Requires active USB probing enabled.
 	Configuration string
 	// Manufacturer is the USB iManufacturer string, when available.
+	// Requires active USB probing enabled.
 	Manufacturer string
 	// Product is the USB iProduct string, when available.
+	// Requires active USB probing enabled.
 	Product string
 }
+
+// All is a vid/pid filter that accepts all devices
+var All = func(vid, pid string) bool { return true }
 
 // GetDetailedPortsList retrieve ports details like USB VID/PID.
 // Please note that this function may not be available on all OS:
 // in that case a FunctionNotImplemented error is returned.
-func GetDetailedPortsList() ([]*PortDetails, error) {
-	return nativeGetDetailedPortsList()
+//
+// Getting some USB fields requires active USB probing (see PortDetails
+// struct), which may interfere with correct operation on some devices.
+// Active USB probing is disabled by default, to enable it you must provide
+// at least one filter function to allow the probing of specific devices based on
+// vid and pid. If no filters are provided then no devices will be actively probed.
+// If a device match any of the filters provided then the device will be actively probed.
+func GetDetailedPortsList(activeUSBProbeFilters ...func(vid, pid string) bool) ([]*PortDetails, error) {
+	return nativeGetDetailedPortsList(func(vid, pid string) bool {
+		for _, filter := range activeUSBProbeFilters {
+			if filter(vid, pid) {
+				return true
+			}
+		}
+		return false
+	})
 }
 
 // PortEnumerationError is the error type for serial ports enumeration
