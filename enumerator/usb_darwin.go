@@ -49,7 +49,7 @@ import (
 	"unsafe"
 )
 
-func nativeGetDetailedPortsList() ([]*PortDetails, error) {
+func nativeGetDetailedPortsList(shouldProbeUSB func(vid, pid string) bool) ([]*PortDetails, error) {
 	var ports []*PortDetails
 
 	services, err := getAllServices("IOSerialBSDClient")
@@ -63,7 +63,7 @@ func nativeGetDetailedPortsList() ([]*PortDetails, error) {
 	}()
 
 	for _, service := range services {
-		port, err := extractPortInfo(io_registry_entry_t(service))
+		port, err := extractPortInfo(io_registry_entry_t(service), shouldProbeUSB)
 		if err != nil {
 			return nil, &PortEnumerationError{causedBy: err}
 		}
@@ -72,7 +72,7 @@ func nativeGetDetailedPortsList() ([]*PortDetails, error) {
 	return ports, nil
 }
 
-func extractPortInfo(service io_registry_entry_t) (*PortDetails, error) {
+func extractPortInfo(service io_registry_entry_t, shouldProbeUSB func(vid, pid string) bool) (*PortDetails, error) {
 	port := &PortDetails{}
 	// If called too early the port may still not be ready or fully enumerated
 	// so we retry 5 times before returning error.
@@ -116,7 +116,6 @@ func extractPortInfo(service io_registry_entry_t) (*PortDetails, error) {
 		serialNumber, _ := usbDevice.GetStringProperty("kUSBSerialNumberString")
 		vendor, _ := usbDevice.GetStringProperty("kUSBVendorString")
 		product, _ := usbDevice.GetStringProperty("kUSBProductString")
-		configuration, _ := usbDevice.GetUSBConfigurationString()
 
 		port.IsUSB = true
 		port.VID = fmt.Sprintf("%04X", vid)
@@ -124,7 +123,14 @@ func extractPortInfo(service io_registry_entry_t) (*PortDetails, error) {
 		port.SerialNumber = serialNumber
 		port.Manufacturer = vendor
 		port.Product = product
-		port.Configuration = configuration
+
+		// Retrieving the USB configuration string requires actively opening
+		// the device and issuing control requests, which may interfere with
+		// the device's normal operation. Only do this if the caller
+		// explicitly allowed probing for this VID/PID.
+		if shouldProbeUSB(port.VID, port.PID) {
+			port.Configuration, _ = usbDevice.GetUSBConfigurationString()
+		}
 	}
 	return port, nil
 }

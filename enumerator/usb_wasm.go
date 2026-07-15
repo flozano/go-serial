@@ -6,6 +6,6 @@
 
 package enumerator
 
-func nativeGetDetailedPortsList() ([]*PortDetails, error) {
+func nativeGetDetailedPortsList(_ func(vid, pid string) bool) ([]*PortDetails, error) {
 	return nil, &PortEnumerationError{}
 }

@@ -14,7 +14,15 @@ import (
 )
 
 func ExampleGetDetailedPortsList() {
-	ports, err := enumerator.GetDetailedPortsList()
+	// Passing enumerator.All actively probes every USB device to retrieve the
+	// Manufacturer, Product and Configuration fields. This may interfere with
+	// the normal operation of some devices, so in production code you should
+	// prefer a filter that only allows probing specific VID/PID pairs, e.g.:
+	//
+	//   enumerator.GetDetailedPortsList(func(vid, pid string) bool {
+	//       return vid == "2341" // only probe Arduino devices
+	//   })
+	ports, err := enumerator.GetDetailedPortsList(enumerator.All)
 	if err != nil {
 		log.Fatal(err)
 	}
