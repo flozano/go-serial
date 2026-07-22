@@ -109,12 +109,46 @@ func (port *unixPort) Read(p []byte) (int, error) {
 	}
 }
 
-func (port *unixPort) Write(p []byte) (n int, err error) {
-	n, err = unix.Write(port.handle, p)
-	if n < 0 { // Do not return -1 unix errors
-		n = 0
+func (port *unixPort) Write(p []byte) (int, error) {
+	// Mirror Read: hold the close lock (so Close waits for a pending
+	// write) and select on the close-signal alongside the write fd, so a
+	// Close() unblocks a Write that is stalled waiting for buffer space
+	// (e.g. no reader on the other end) — bugst/go-serial#150.
+	port.closeLock.RLock()
+	defer port.closeLock.RUnlock()
+	if atomic.LoadUint32(&port.opened) != 1 {
+		return 0, &PortError{code: PortClosed}
 	}
-	return
+
+	closeFDs := unixutils.NewFDSet(port.closeSignal.ReadFD())
+	writeFDs := unixutils.NewFDSet(port.handle)
+	total := 0
+	for total < len(p) {
+		res, err := unixutils.Select(closeFDs, writeFDs, closeFDs, -1)
+		if err == unix.EINTR {
+			continue
+		}
+		if err != nil {
+			return total, err
+		}
+		if res.IsReadable(port.closeSignal.ReadFD()) {
+			return total, &PortError{code: PortClosed}
+		}
+		if !res.IsWritable(port.handle) {
+			continue
+		}
+		n, err := unix.Write(port.handle, p[total:])
+		if n > 0 {
+			total += n
+		}
+		if err != nil {
+			if err == unix.EINTR || err == unix.EAGAIN || err == unix.EWOULDBLOCK {
+				continue
+			}
+			return total, err
+		}
+	}
+	return total, nil
 }
 
 func (port *unixPort) Break(t time.Duration) error {
