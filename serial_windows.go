@@ -414,6 +414,26 @@ func nativeOpen(portName string, mode *Mode) (*windowsPort, error) {
 		}
 		return nil, err
 	}
+
+	// Enlarge the driver's RX/TX queues before any read/write. Without this
+	// the driver uses a small default input buffer; under bursty traffic it
+	// can overrun in the gap between one Read completing and the next
+	// ReadFile being posted, and because dcbAbortOnError is left off (see
+	// below) the overrun silently drops bytes rather than surfacing an error.
+	// That is the root cause reported in bugst/go-serial#217 (and the older
+	// #45). SetupComm is only a hint the driver may clamp, so try a generous
+	// size first and fall back to the modest 4 KB that #217 validated; it is
+	// best-effort throughout — a driver that refuses SetupComm outright (some
+	// virtual-COM drivers do) still opens and works on its default buffers.
+	//
+	// #217 also suggests a WaitCommEvent/SetCommMask event-driven read loop,
+	// but that is only needed for *synchronous* ReadFile: this port uses
+	// overlapped I/O (FILE_FLAG_OVERLAPPED) whose completion already fires
+	// when data arrives, so the buffer sizing is the missing piece.
+	if err := windows.SetupComm(handle, 65536, 65536); err != nil {
+		_ = windows.SetupComm(handle, 4096, 4096)
+	}
+
 	// Create the serial port
 	port := &windowsPort{
 		handle: handle,
