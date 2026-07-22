@@ -84,10 +84,19 @@ func (port *windowsPort) Read(p []byte) (int, error) {
 	}
 	defer windows.CloseHandle(ev.HEvent)
 
+	// Capture the handle under the lock so a concurrent Close() (which
+	// zeroes port.handle) doesn't race the reads below (bugst/go-serial#219).
+	port.mu.Lock()
+	h := port.handle
+	port.mu.Unlock()
+	if h == 0 {
+		return 0, &PortError{code: PortClosed}
+	}
+
 	for {
-		err = windows.ReadFile(port.handle, p, &readed, ev)
+		err = windows.ReadFile(h, p, &readed, ev)
 		if err == windows.ERROR_IO_PENDING {
-			err = windows.GetOverlappedResult(port.handle, ev, &readed, true)
+			err = windows.GetOverlappedResult(h, ev, &readed, true)
 		}
 		switch err {
 		case nil:
@@ -120,10 +129,18 @@ func (port *windowsPort) Write(p []byte) (int, error) {
 		return 0, err
 	}
 	defer windows.CloseHandle(ev.HEvent)
-	err = windows.WriteFile(port.handle, p, &writed, ev)
+	// Same handle-capture as Read (bugst/go-serial#219): don't touch
+	// port.handle unlocked while Close() may be zeroing it.
+	port.mu.Lock()
+	h := port.handle
+	port.mu.Unlock()
+	if h == 0 {
+		return 0, &PortError{code: PortClosed}
+	}
+	err = windows.WriteFile(h, p, &writed, ev)
 	if err == windows.ERROR_IO_PENDING {
 		// wait for write to complete
-		err = windows.GetOverlappedResult(port.handle, ev, &writed, true)
+		err = windows.GetOverlappedResult(h, ev, &writed, true)
 	}
 	return int(writed), err
 }
