@@ -1,4 +1,4 @@
-module go.bug.st/serial
+module github.com/flozano/go-serial
 
 go 1.25.0
 

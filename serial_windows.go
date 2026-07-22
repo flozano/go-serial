@@ -202,6 +202,19 @@ func (port *windowsPort) setModeParams(mode *Mode, params *windows.DCB) {
 	}
 	params.StopBits = stopBitsMap[mode.StopBits]
 	params.Parity = parityMap[mode.Parity]
+
+	// Flow control. Clear the CTS-out, RTS-control (2-bit field) and
+	// XON/XOFF flags, then set per the requested mode.
+	params.Flags &^= dcbOutXCTSFlow | dcbInX | dcbOutX
+	params.Flags &= dcbRTSControlDisableMask
+	switch mode.FlowControl {
+	case HardwareFlowControl:
+		params.Flags |= dcbOutXCTSFlow | dcbRTSControlHandshake
+	case SoftwareFlowControl:
+		params.Flags |= dcbInX | dcbOutX | dcbRTSControlEnable
+	default:
+		params.Flags |= dcbRTSControlEnable
+	}
 }
 
 func (port *windowsPort) SetDTR(dtr bool) error {

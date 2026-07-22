@@ -100,8 +100,21 @@ type Mode struct {
 	DataBits          int              // Size of the character (must be 5, 6, 7 or 8)
 	Parity            Parity           // Parity (see Parity type for more info)
 	StopBits          StopBits         // Stop bits (see StopBits type for more info)
+	FlowControl       FlowControl      // Flow control (see FlowControl type for more info)
 	InitialStatusBits *ModemOutputBits // Initial output modem bits status (if nil defaults to DTR=true and RTS=true)
 }
+
+// FlowControl describes a serial port flow-control setting.
+type FlowControl int
+
+const (
+	// NoFlowControl disables flow control (default).
+	NoFlowControl FlowControl = iota
+	// HardwareFlowControl enables RTS/CTS hardware handshaking.
+	HardwareFlowControl
+	// SoftwareFlowControl enables XON/XOFF software flow control.
+	SoftwareFlowControl
+)
 
 // Parity describes a serial port parity setting
 type Parity int

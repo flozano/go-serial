@@ -16,7 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.bug.st/serial/unixutils"
+	"github.com/flozano/go-serial/unixutils"
 	"golang.org/x/sys/unix"
 )
 
@@ -144,6 +144,12 @@ func (port *unixPort) SetMode(mode *Mode) error {
 	}
 	if err := setTermSettingsStopBits(mode.StopBits, settings); err != nil {
 		return err
+	}
+	setTermSettingsCtsRts(mode.FlowControl == HardwareFlowControl, settings)
+	if mode.FlowControl == SoftwareFlowControl {
+		settings.Iflag |= unix.IXON | unix.IXOFF
+	} else {
+		settings.Iflag &^= (unix.IXON | unix.IXOFF)
 	}
 	requireSpecialBaudrate := false
 	if err, special := setTermSettingsBaudrate(mode.BaudRate, settings); err != nil {

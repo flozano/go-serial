@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"go.bug.st/serial"
+	"github.com/flozano/go-serial"
 )
 
 func nativeGetDetailedPortsList(_ func(vid, pid string) bool) ([]*PortDetails, error) {
