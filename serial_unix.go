@@ -238,6 +238,13 @@ func (port *unixPort) SetReadTimeout(timeout time.Duration) error {
 	return nil
 }
 
+func (port *unixPort) SetReadIntervalTimeout(interval, total time.Duration) error {
+	if interval <= 0 {
+		return &PortError{code: InvalidTimeoutValue}
+	}
+	return port.SetReadTimeout(total)
+}
+
 func (port *unixPort) GetModemStatusBits() (*ModemStatusBits, error) {
 	status, err := port.getModemBitsStatus()
 	if err != nil {

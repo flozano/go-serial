@@ -101,6 +101,10 @@ func (port *windowsPort) Read(p []byte) (int, error) {
 		switch err {
 		case nil:
 			// operation completed successfully
+		case windows.ERROR_TIMEOUT:
+			// Wine completes a read whose total timeout expired as a failure
+			// with STATUS_TIMEOUT; Windows completes it successfully with
+			// whatever arrived. They mean the same, so treat them the same.
 		case windows.ERROR_OPERATION_ABORTED:
 			// port may have been closed
 			return int(readed), &PortError{code: PortClosed, causedBy: err}
@@ -330,16 +334,16 @@ func (port *windowsPort) GetModemStatusBits() (*ModemStatusBits, error) {
 	}, nil
 }
 
-func (port *windowsPort) SetReadTimeout(timeout time.Duration) error {
-	// This is a brutal hack to make the CH340 chipset work properly.
-	// Normally this value should be 0xFFFFFFFE but, after a lot of
-	// tinkering, I discovered that any value with the highest
-	// bit set will make the CH340 driver behave like the timeout is 0,
-	// in the best cases leading to a spinning loop...
-	// (could this be a wrong signed vs unsigned conversion in the driver?)
-	// https://github.com/arduino/serial-monitor/issues/112
-	const MaxReadTotalTimeoutConstant = 0x7FFFFFFE
+// This is a brutal hack to make the CH340 chipset work properly.
+// Normally this value should be 0xFFFFFFFE but, after a lot of
+// tinkering, I discovered that any value with the highest
+// bit set will make the CH340 driver behave like the timeout is 0,
+// in the best cases leading to a spinning loop...
+// (could this be a wrong signed vs unsigned conversion in the driver?)
+// https://github.com/arduino/serial-monitor/issues/112
+const MaxReadTotalTimeoutConstant = 0x7FFFFFFE
 
+func (port *windowsPort) SetReadTimeout(timeout time.Duration) error {
 	commTimeouts := &windows.CommTimeouts{
 		ReadIntervalTimeout:         0xFFFFFFFF,
 		ReadTotalTimeoutMultiplier:  0xFFFFFFFF,
@@ -360,12 +364,37 @@ func (port *windowsPort) SetReadTimeout(timeout time.Duration) error {
 		commTimeouts.ReadTotalTimeoutConstant = uint32(ms)
 	}
 
+	return port.setCommTimeouts(commTimeouts, timeout != NoTimeout)
+}
+
+func (port *windowsPort) SetReadIntervalTimeout(interval, total time.Duration) error {
+	gap := interval.Milliseconds()
+	if gap < 1 || gap > MaxReadTotalTimeoutConstant {
+		return &PortError{code: InvalidTimeoutValue}
+	}
+	// Both total members zero means no total timeout at all: Read waits for
+	// the first byte for as long as it takes, then for the gap.
+	commTimeouts := &windows.CommTimeouts{ReadIntervalTimeout: uint32(gap)}
+	if total != NoTimeout {
+		ms := total.Milliseconds()
+		if ms < 0 {
+			return &PortError{code: InvalidTimeoutValue}
+		}
+		// Zero would switch the total timeout off rather than return at
+		// once, which is the opposite of what was asked.
+		ms = min(max(ms, 1), MaxReadTotalTimeoutConstant)
+		commTimeouts.ReadTotalTimeoutConstant = uint32(ms)
+	}
+	return port.setCommTimeouts(commTimeouts, total != NoTimeout)
+}
+
+func (port *windowsPort) setCommTimeouts(commTimeouts *windows.CommTimeouts, hasTimeout bool) error {
 	port.mu.Lock()
 	defer port.mu.Unlock()
 	if err := windows.SetCommTimeouts(port.handle, commTimeouts); err != nil {
 		return &PortError{code: InvalidTimeoutValue, causedBy: err}
 	}
-	port.hasTimeout = (timeout != NoTimeout)
+	port.hasTimeout = hasTimeout
 
 	return nil
 }

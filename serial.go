@@ -49,6 +49,23 @@ type Port interface {
 	// to disable read timeout.
 	SetReadTimeout(t time.Duration) error
 
+	// SetReadIntervalTimeout makes Read wait up to total for the first byte
+	// (serial.NoTimeout: without limit) and then return once the line has
+	// been quiet for interval, or p is full, whichever comes first.
+	//
+	// On Windows this is the classic interval mode of COMMTIMEOUTS
+	// (ReadIntervalTimeout=interval, ReadTotalTimeoutMultiplier=0,
+	// ReadTotalTimeoutConstant=total) instead of the MAXDWORD special case
+	// SetReadTimeout relies on. Some serial implementations do not honour
+	// that special case -- Wine, notably, where a Read after SetReadTimeout
+	// blocks until p is full -- while every one of them implements interval
+	// mode. interval should be longer than one character at the port's
+	// speed (about 10 ms at 1200 baud), or Read returns a byte at a time.
+	//
+	// Elsewhere Read already returns as soon as anything has arrived, so the
+	// interval is accepted and this is SetReadTimeout(total).
+	SetReadIntervalTimeout(interval, total time.Duration) error
+
 	// Close the serial port
 	Close() error
 

@@ -74,3 +74,31 @@ func TestDoubleCloseIsNoop(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestReadIntervalTimeout(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := startSocatAndWaitForPort(t, ctx)
+	go cmd.Wait()
+
+	port, err := Open("/tmp/faketty", &Mode{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer port.Close()
+
+	if err := port.SetReadIntervalTimeout(0, NoTimeout); err == nil {
+		t.Error("a zero interval was accepted")
+	}
+	if err := port.SetReadIntervalTimeout(20*time.Millisecond, 50*time.Millisecond); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	start := time.Now()
+	n, err := port.Read(make([]byte, 10))
+	if n != 0 || err != nil {
+		t.Errorf("read %d bytes, %v; want the total timeout: 0 and no error", n, err)
+	}
+	if waited := time.Since(start); waited < 50*time.Millisecond {
+		t.Errorf("returned after %v, before the total timeout", waited)
+	}
+}
